@@ -4,6 +4,7 @@
 'Program edited on 6/5/2018.
 'Program edited on 5/14/2019.
 'Program edited on 5/28/2019.
+'Program edited on 8/6/2019. 
 'For 7K Met Station (Base Camp). Measures AT, AT/RH, solar rad x2, w/s, w/d, and distance to snow
 '
 'AIR TEMP with a CSI 107 or CSI 109 temp sensor. This is the primary AT reading.
@@ -12,7 +13,7 @@
 '
 ' Color Function CR200(X)
 ' ----- -------- -------
-' Red   Power     12v (CHANGE PROGRAM TO TURN ON SWITCHED POWER, THEN CHANGE THIS TO "SW12V")
+' Red   Power     SW12v 
 ' Green SDI-12    signal C3
 ' Black Power     ground G
 ' White Power     ground G
@@ -316,7 +317,10 @@ BeginProg
       Distance_cm = Distance_m*100
     EndIf
     'CS215 Temperature & Relative Humidity Sensor measurements 'AirTC' and 'RH'
+    SW12(1)
+    Delay(0,150,mSec)
     SDI12Recorder(TRHData(),3,"1","M!",1,0)
+    SW12(0)
     AirTemp215 = (AirTemp215 * (9/5)) + 32
     If RH215 >100 AND RH215 < 108 Then RH215 = 100
     
