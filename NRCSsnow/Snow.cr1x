@@ -8,6 +8,8 @@
 ' Set luftCalib = 1 to perform the luft calibration...this will set the sensor to read snow depth based on target assuming currently no snow.
 ' Set Actual sensor heights in inches in the public table, changes will be retained under loss of power, reset during program upload
 ' Change the constant "logInterval = 15" to the number of minutes between reading, currently 15 minutes
+' To calibrate the luft on-site set the luftCalib variable to 1 for one program scan through the top of the minute
+'      calibration takes a while, but will zero out snow depth on the current target
 
 
 
@@ -64,7 +66,7 @@ Const logInterval = 15
 
 'Public variables
 Public numGood,makeRead,forceRead,progInit
-Public PTemp, batt_volt,i
+Public PTemp, batt_volt
 Public raw As String * 100
 
 'Variables for LaserTech S200
@@ -81,7 +83,7 @@ Public lm20Split(2) As String * 10
 'Variables for Luft
 Public luftTemp As String * 100
 Public luftSplit(5) As String * 10
-Public luftSnowDepth,luftDistance,luftAngle,luftCalib
+Public luftSnowDepth,luftDistance,luftAngle,luftCalib,luftAmbTemperature
 
 'Variables for Sommer
 Public sommerDistance,sommerSnowDepth,sommerTemperature
@@ -106,6 +108,7 @@ Public SplitResult(7) As String * 10
 
 'Define Data Tables
 DataTable (laserS200,1,-1)
+  TableFile ("USB:"+Status.SerialNumber+"_LaserS200",8,-1,0,0,Min,0,0)
   Minimum (1,batt_volt,FP2,0,False)
   Sample (1,PTemp,FP2)
   Sample (1,S200_distance_first,FP2)
@@ -116,24 +119,29 @@ DataTable (laserS200,1,-1)
 EndTable
 
 DataTable (luft,1,-1)
+  TableFile ("USB:"+Status.SerialNumber+"_Lufft",8,-1,0,0,Min,0,0)
   Sample (1,luftDistance,FP2)
   Sample (1,luftAngle,FP2)
   Sample (1,luftSnowDepth,FP2)
+  Sample (1,luftAmbTemperature,FP2)
 EndTable
 
 DataTable (sommer,1,-1)
+  TableFile ("USB:"+Status.SerialNumber+"_Sommer",8,-1,0,0,Min,0,0)
   Sample (1,sommerDistance,FP2)
   Sample (1,sommerSnowDepth,FP2)
   Sample (1,sommerTemperature,FP2)
 EndTable
 
 DataTable (judd,1,-1)
+  TableFile ("USB:"+Status.SerialNumber+"_Judd",8,-1,0,0,Min,0,0)
   Sample (1,juddDistance,FP2)
   Sample (1,juddSnowDepth,FP2)
   Sample (1,juddTemperature,FP2)
 EndTable
 
 DataTable (lm20,1,-1)
+  TableFile ("USB:"+Status.SerialNumber+"_LW20",8,-1,0,0,Min,0,0)
   Sample (1,lm20Distance,FP2)
   Sample (1,lm20SnowDepth,FP2)
 EndTable
@@ -171,7 +179,7 @@ BeginProg
   Scan (1,min,0,0)
 
     If luftCalib = 1 Then
-      SDI12Recorder (luftTemp,C1,0,"XARV!",1.0,0,,2)
+      SDI12Recorder (luftTemp,C1,0,"0XLARV!",1.0,0,,2)
       luftCalib = 0
     EndIf
 
@@ -191,11 +199,13 @@ BeginProg
     EndIf
     CallTable(setup)
 
+    'Turn on Luft sensor
+    SW12 (SW12_2,1 )
+    
+
     If makeRead = 1 Then
       'Turn on LaserTech S200
       SW12 (SW12_1,1 )
-      'Turn on Luft sensor
-      SW12 (SW12_2,1 )
 
 
       PanelTemp (PTemp,250)
@@ -224,8 +234,10 @@ BeginProg
       'Read luft Sensor
       SDI12Recorder (luftTemp,C1,0,"M!",1.0,0)
       Delay(0,1,Sec)
+      SDI12Recorder (luftTemp,C1,0,"D0!",1.0,0,,2
       SplitStr (luftSplit,luftTemp,"+",5,7)
       luftSnowDepth = luftSplit(3)
+      luftAmbTemperature = luftSplit(5)
       Delay(0,1,Sec)
       SDI12Recorder (luftTemp,C1,0,"D1!",1.0,0,,2)
       SplitStr (luftSplit,luftTemp,"+",5,7)
@@ -294,7 +306,6 @@ BeginProg
       EndIf
 
       SW12 (SW12_1,0)
-      SW12 (SW12_2,1 )
 
 
       CallTable laserS200
@@ -309,4 +320,3 @@ BeginProg
 
 
 EndProg
-
