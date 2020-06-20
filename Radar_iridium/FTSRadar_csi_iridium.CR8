@@ -1,0 +1,293 @@
+'For programming tips, copy this address to your browser
+'search window:https://www.campbellsci.com/videos/datalogger-programming
+
+'CR800 Series Datalogger
+'Date: 6/20/2020
+'Program author: Crane Johnson
+
+
+' Iridium Modem Wiring
+' C3 - Iridium yellow wire
+' C4 - Iridium grey wire
+' SW12 - Iridium red power toggle wire  (the single pigtail to control on-off)
+' The iridium modem is connected directly to power source Red - 12v and Black - G
+
+'FTS Radar Sensor Wiring
+' Reference: https://s.campbellsci.com/documents/us/manuals/cs475a.pdf
+' Red - 12V
+' Black - G
+' Clear - AG
+' White - C1  (SDI12 Signal)
+
+
+'Declare Constants
+'Example:
+'CONST PI = 3.141592654 or Const PI = 4*ATN(1)
+
+Const sendInterval = 60                                       ' How often to transmit data in minutes
+
+'Declare Public Variables
+'Iridium variables
+Public forceMessage
+Public tries                                                  ' Counter that keeps track of the number of attempts to send data (zero'd out each hour)
+Public success                                                ' The variable is true when the modem is successful
+Const Iridiumport = com2                                      ' This is the serial port that the iridium modem is connected to
+Const numvals = 4                                             ' Edit this value to change the number of data values to pull from the table
+Public lowPowerDelay
+
+
+Public numGood,makeRead,forceRead
+Public PTemp, Batt_volt,i
+
+Public CS475A(4)
+Alias CS475A(1) = Stage                                       'Measured/current stage based on reference conditions 'in sensor
+Alias CS475A(2) = Distance                                    'Measured distance from the sensor to the water surface
+Alias CS475A(3) = Batt_volt_sensor                            'This is the voltage seen at the sensor
+Alias CS475A(4) = Error_Code                                  'error code returned by the sensor.
+
+Units Stage = ft                                              'Could be meters based on settings in sensor
+Units Distance = ft                                           'Could be meters based on settings in sensor
+Units Batt_volt_sensor = V
+Units Error_Code = NA                                         'unitless
+
+
+
+'Define Data Tables
+DataTable (hourly,1,-1)
+  Minimum (1,Batt_volt,FP2,0,False)
+  Sample (1,PTemp,FP2)
+  Sample (1,Distance,FP2)
+  Sample (1,Error_Code,FP2)
+EndTable
+
+
+'\\\\\\\\\\\\\\\\\\\\\\\\\ SUBROUTINES //////////////////////////
+
+
+'This subroutine converts a number to a positive integer for transfer by iridium
+'i.e.  12.14 becomes  2121  (add 200 then multiply by 10)
+Sub converttolong (floatval As Float, longval As Long)
+  longval = FIX((floatval+200)*10)
+EndSub
+
+Sub senddatatoiridium(numberofvalues,attempts,success)
+  Dim result(6)
+  Public message As String * 150
+  Public meslength,chcksum,actuallength
+  Public localattempts
+  Public lastrecord(100)
+  Dim longrecord(100) As Long
+  Public byte1 As Long
+  Public byte2 As Long
+  Public hours As Long
+  Public iridchecksum As Long
+  Public debug1 As String * 30
+  Public debug2 As String * 30
+  Public debug3 As String * 30
+  Public debug4 As String * 30
+  Public debug5 As String * 30
+
+  Dim binaryok As String * 20
+  Dim modemready As Long
+  Dim online As Long
+  Public messageresult As String * 50
+  Public numresult(2) As String * 50
+  Dim j
+
+  'Initialize iridium Variables
+  meslength = 0
+  iridchecksum = 0
+  message = ""
+  success = 0
+  localattempts = 0
+
+  '###
+  '### Get the last data record
+  '###
+
+  GetRecord(lastrecord,Laser,1)
+
+  '###
+  '###Get the hours since beginning of the year and insert into binary message
+  '### Start calculating binary checksum value
+  '###
+  hours = INT((Laser.Timestamp(2,1))/3600)+24
+  MoveBytes (message,meslength,hours,2,2)
+  MoveBytes (byte1,3,hours,2,1)
+  MoveBytes (byte2,3,hours,3,1)
+  iridchecksum = iridchecksum + byte1+byte2
+
+
+  '###
+  '###Get the specif  ied number of values from the last record and insert them into the binary message
+  '###
+  For j=1 To numberofvalues Step 1
+    meslength = meslength + 2
+    converttolong(lastrecord(j),longrecord(j))
+    MoveBytes (message,meslength,longrecord(j),0,2)
+    MoveBytes (byte1,3,longrecord(j),2,1)
+    MoveBytes (byte2,3,longrecord(j),3,1)
+    iridchecksum = iridchecksum + byte1+byte2
+  Next j
+
+  chcksum = CheckSum (message,23,0)
+  actuallength = Len(message)
+
+  '###
+  '### Add checksum to binary message
+  '###
+  MoveBytes (message,meslength,iridchecksum,2,2)
+  meslength = meslength + 2
+
+  '###
+  '### Turn on modem and complete SBD session
+  '###
+
+  Delay (1,3,Sec)
+  SerialOpen (Iridiumport,19200,3,0,200)
+  While ((success <> 1) AND (localattempts < 4))
+  debug1 = ""
+  debug2 = ""
+  debug3 = ""
+  debug4 = ""
+  debug5 = ""
+  SerialFlush (Iridiumport)
+  messageresult = "-"
+  binaryok = 0
+  numresult(1) = 0
+  numresult(2) = 0
+  online = 0
+  modemready = 0
+  result() = 0
+  attempts = attempts + 1
+  localattempts = localattempts + 1
+  modemready = SerialOut(Iridiumport, "AT+SBDWB=" + meslength+CHR(13),"READY",1,300)
+  If (modemready<>0) Then
+    debug1 = "Modem Ready"
+    SerialOutBlock(Iridiumport,message,meslength)
+    SerialIn (binaryok,Iridiumport,100,"0",5)
+    If (InStr (1,binaryok,"0",2)) Then
+      debug2 = "Modem Accepts Data"
+      debug3 = "Waiting for Satellite"
+      online = SerialOut (Iridiumport,"AT+CIER=1,0,1,0"+CHR(13),"+CIEV:1,1",1,1000)                            'Set modem config and wait for satellite connection
+      If (online <> 0) Then
+        debug3 = "Satellite Visible"
+        debug4 = "Message Sent"
+        SerialOut(Iridiumport,"AT+SBDIX"+CHR(13),"",0,0)
+        SerialIn(messageresult,Iridiumport,4000,0,30)
+        SplitStr(numresult,messageresult,":",2,5)
+        SplitStr(result,numresult(2),",",6,5)
+        If (result(1) < 5) Then
+          debug5 = "Delivery confirmed by Satellite"
+          success = 1
+        Else
+          debug4 = "Message Failed"
+        EndIf
+      Else
+        debug3 = "No satellite Connection"
+      EndIf
+    Else
+      debug2 = "Data not accepted by modem"
+    EndIf
+  Else
+    debug1 = "Modem Not Ready"
+  EndIf
+
+Wend
+If (success = 0) Then
+  debug5 = "Message Not Delivered"
+EndIf
+SerialOut(Iridiumport,"AT+SBDD0"+CHR(13),"",0,100)
+SerialFlush (Iridiumport)
+SerialClose(Iridiumport)
+
+EndSub
+
+
+'\\\\\\\\\\\\\\\\\\\\\\\\\\\ PROGRAM ////////////////////////////
+
+
+'Main Program
+BeginProg
+  SerialOpen (Iridiumport,19200,0,0,200)
+
+  'Turn on the iridium modem 
+  SW12(1)
+
+
+  Scan (1,Min,0,0)
+    If forceRead = 1 Then
+      makeRead = 1
+    EndIf
+    If TimeIntoInterval(0,sendInterval,min) Then
+      makeRead = 1
+    EndIf
+
+    If TimeIntoInterval(0,sendInterval,min) Then
+      forceRead = 0
+    EndIf
+
+    If makeRead = 1 Then
+      PanelTemp (PTemp,60)
+      Battery (Batt_volt)
+      Delay(0,2,2)
+      'Read Radar Gage
+      SDI12Recorder (CS475A,C1,0,"M!",1.0,0,-1)
+      Distance = Distance
+    EndIf
+
+    CallTable Hourly
+    makeRead = 0
+  NextScan
+
+  SlowSequence
+  Scan (1,min,0,0)
+    debug1 = ""
+    debug2 = ""
+    debug3 = ""
+    debug4 = ""
+
+    'Add a delay multiplier for low battery voltage
+    lowPowerDelay = 1
+    If Batt_volt < 12.3 Then
+      lowPowerDelay = 6
+    EndIf
+    If Batt_volt < 12.0 Then
+      lowPowerDelay = 24
+    EndIf
+
+    'Manual force a message by setting forceMessage = 1 via the keypad
+    If forceMessage = 1 Then
+      SW12(1)
+      Delay (0,1,Sec)
+      Call senddatatoiridium(numvals,tries,success)
+      SW12(0)
+      forceMessage = 0
+    EndIf
+
+    If TimeIntoInterval(1,sendInterval*lowPowerDelay,min) Then
+      tries = 0
+      SW12(1)
+      Delay (0,1,Sec)
+      Call senddatatoiridium(numvals,tries,success)
+      SW12(0)
+    EndIf
+
+    If TimeIntoInterval(3,5,min) Then
+      'If too  many tries just skip this transmission
+      If (tries > 20) Then
+        success = 1
+      EndIf
+      If (success = 0) Then
+        SW12(1)
+        Call senddatatoiridium(numvals,tries,success)
+        Delay (0,1,Sec)
+        SW12(0)
+      EndIf
+    EndIf
+  NextScan
+
+
+
+EndProg
+
