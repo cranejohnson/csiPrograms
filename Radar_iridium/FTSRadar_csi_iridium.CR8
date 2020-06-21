@@ -7,22 +7,20 @@
 
 
 ' Iridium Modem Wiring
+' Note iridium modem should be configured for 3-wire communication 
 ' C3 - Iridium yellow wire
 ' C4 - Iridium grey wire
 ' SW12 - Iridium red power toggle wire  (the single pigtail to control on-off)
 ' The iridium modem is connected directly to power source Red - 12v and Black - G
 
 'FTS Radar Sensor Wiring
-' Reference: https://s.campbellsci.com/documents/us/manuals/cs475a.pdf
+' Reference: https://s.campbellsci.com/documents/us/manuals/FTSradar.pdf
 ' Red - 12V
 ' Black - G
 ' Clear - AG
 ' White - C1  (SDI12 Signal)
 
 
-'Declare Constants
-'Example:
-'CONST PI = 3.141592654 or Const PI = 4*ATN(1)
 
 Const sendInterval = 60                                       ' How often to transmit data in minutes
 
@@ -32,18 +30,18 @@ Public forceMessage
 Public tries                                                  ' Counter that keeps track of the number of attempts to send data (zero'd out each hour)
 Public success                                                ' The variable is true when the modem is successful
 Const Iridiumport = com2                                      ' This is the serial port that the iridium modem is connected to
-Const numvals = 4                                             ' Edit this value to change the number of data values to pull from the table
+Const numvals = 5                                             ' Edit this value to change the number of data values to pull from the table
 Public lowPowerDelay
 
 
-Public numGood,makeRead,forceRead
-Public PTemp, Batt_volt,i
+Public makeRead,forceRead
+Public PTemp, Batt_volt
 
-Public CS475A(4)
-Alias CS475A(1) = Stage                                       'Measured/current stage based on reference conditions 'in sensor
-Alias CS475A(2) = Distance                                    'Measured distance from the sensor to the water surface
-Alias CS475A(3) = Batt_volt_sensor                            'This is the voltage seen at the sensor
-Alias CS475A(4) = Error_Code                                  'error code returned by the sensor.
+Public FTSradar(4)
+Alias FTSradar(1) = Stage                                       'Measured/current stage based on reference conditions 'in sensor
+Alias FTSradar(2) = Distance                                    'Measured distance from the sensor to the water surface
+Alias FTSradar(3) = Batt_volt_sensor                            'This is the voltage seen at the sensor
+Alias FTSradar(4) = Error_Code                                  'error code returned by the sensor.
 
 Units Stage = ft                                              'Could be meters based on settings in sensor
 Units Distance = ft                                           'Could be meters based on settings in sensor
@@ -57,6 +55,7 @@ DataTable (hourly,1,-1)
   Minimum (1,Batt_volt,FP2,0,False)
   Sample (1,PTemp,FP2)
   Sample (1,Distance,FP2)
+  Sample (1,Stage,FP2)
   Sample (1,Error_Code,FP2)
 EndTable
 
@@ -105,13 +104,13 @@ Sub senddatatoiridium(numberofvalues,attempts,success)
   '### Get the last data record
   '###
 
-  GetRecord(lastrecord,Laser,1)
+  GetRecord(lastrecord,Hourly,1)
 
   '###
   '###Get the hours since beginning of the year and insert into binary message
   '### Start calculating binary checksum value
   '###
-  hours = INT((Laser.Timestamp(2,1))/3600)+24
+  hours = INT((Hourly.Timestamp(2,1))/3600)+24
   MoveBytes (message,meslength,hours,2,2)
   MoveBytes (byte1,3,hours,2,1)
   MoveBytes (byte2,3,hours,3,1)
@@ -214,7 +213,7 @@ BeginProg
   'Turn on the iridium modem 
   SW12(1)
 
-
+  'Set the variable forceRead to 1 to force a sample and iridium tx 
   Scan (1,Min,0,0)
     If forceRead = 1 Then
       makeRead = 1
@@ -232,8 +231,7 @@ BeginProg
       Battery (Batt_volt)
       Delay(0,2,2)
       'Read Radar Gage
-      SDI12Recorder (CS475A,C1,0,"M!",1.0,0,-1)
-      Distance = Distance
+      SDI12Recorder (FTSradar,1,0,"M!",1.0,0,-1)
     EndIf
 
     CallTable Hourly
