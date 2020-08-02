@@ -10,9 +10,10 @@
 ' Note iridium modem should be configured for 3-wire communication
 ' C3 - Iridium yellow wire
 ' C4 - Iridium grey wire
-' SW12 - Iridium red power toggle wire  (the single pigtail to control on-off)
-' The iridium modem is connected directly to power source Red - 12v and Black - G
+' SW12 - Iridium red power toggle wire  
 
+' Black - G
+' Iridium is powered through SW12 volt plug
 'FTS Radar Sensor Wiring
 ' Reference: https://s.campbellsci.com/documents/us/manuals/FTSradar.pdf
 ' Red - 12V
@@ -300,6 +301,3 @@ BeginProg
 
 
 EndProg
-
-
-   $        
