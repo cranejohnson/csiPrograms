@@ -38,7 +38,7 @@ Public lowPowerDelay
 Public makeRead,forceRead
 Public PTemp, Batt_volt
 
-Public WLradar(6)
+Public WLradar(4)
 Alias WLradar(1) = Stage                                       'Measured/current stage based on reference conditions 'in sensor
 Alias WLradar(2) = Distance                                    'Measured distance from the sensor to the water surface
 Alias WLradar(3) = MeasurementStatus                            
@@ -217,6 +217,7 @@ BeginProg
 
   'Turn on the iridium modem
   SW12(1)
+  PortSet (2 ,1 )
 
   'Set the variable forceRead to 1 to force a sample and iridium tx
   Scan (1,Min,0,0)
@@ -263,9 +264,12 @@ BeginProg
     'Manual force a message by setting forceMessage = 1 via the keypad
     If forceMessage = 1 Then
       SW12(1)
+      PortSet (2 ,1 )
       Delay (0,1,Sec)
       Call senddatatoiridium(numvals,tries,success)
       SW12(0)
+      PortSet (2 ,0)
+
       forceMessage = 0
     EndIf
 
@@ -273,9 +277,11 @@ BeginProg
     If TimeIntoInterval(1,sendInterval,min) Then
       tries = 0
       SW12(1)
+      PortSet(2,1)
       Delay (0,1,Sec)
       Call senddatatoiridium(numvals,tries,success)
       SW12(0)
+      PortSet(2,0)
     EndIf
 
     If TimeIntoInterval(3,5,min) Then
@@ -285,9 +291,11 @@ BeginProg
       EndIf
       If (success = 0) Then
         SW12(1)
+        PortSet(2,1)
         Call senddatatoiridium(numvals,tries,success)
         Delay (0,1,Sec)
         SW12(0)
+        PortSet(2,0)
       EndIf
     EndIf
   NextScan
